@@ -1,0 +1,153 @@
+import networkx as nx
+import json
+import os.path
+
+
+def add_to_diction(dic_put, first_key):
+    if first_key not in dic_put:
+        dic_put[first_key] = {"count": 1, "cor": "none"}
+    else:
+        dic_put[first_key]["count"] += 1
+
+
+def return_key(one, two):
+    if one <= two:
+        return str(one)+"-"+str(two)
+    else:
+        return str(two)+"-"+str(one)
+
+
+def parse_train_file(path, in_pos, in_neg):
+    in_data = json.load(open(path))
+    for item in in_data:
+        for x in range(0, len(item['inputs'])):
+            for t in range(0, len(item['outputs'])):
+                x_input = item['inputs'][x]
+                t_outpu = item['outputs'][t]
+                if x_input <= t_outpu:
+                    neg_x_t = str(x_input) + "-" + str(t_outpu)
+                else:
+                    neg_x_t = str(t_outpu) + "-" + str(x_input)
+                add_to_diction(in_neg, neg_x_t)
+            for y in range((x + 1), len(item['inputs'])):
+                key11 = return_key(item['inputs'][x], item['inputs'][y])
+                key12 = return_key(item['outputs'][x], item['outputs'][y])
+                add_to_diction(in_pos, key11)
+                add_to_diction(in_pos, key12)
+
+
+def avv(diction1, diction2):
+    summ = 0
+    counter = 0
+    for itemd in diction1:
+        summ += (diction1[itemd]['count']*diction1[itemd]['score'])
+        counter += diction1[itemd]['count']
+    for itemd in diction2:
+        summ += (diction2[itemd]['count']*diction2[itemd]['score'])
+        counter += diction2[itemd]['count']
+    return summ/counter
+
+
+def neighbors(graph, node_a, node_b):
+    ans = {'same': 0, "different": 0}
+    if (graph.has_node(node_a))and(graph.has_node(node_b)):
+        xx = nx.common_neighbors(graph, node_a, node_b)
+        for node_t in xx:
+            xxx1 = G.get_edge_data(node_t, node_a, default={'weight': 0})
+            xxx2 = G.get_edge_data(node_t, node_b, default={'weight': 0})
+            if (xxx1['weight'] == xxx2['weight'])and(not(xxx2['weight'] == 0)):
+                ans['same'] += 1
+            elif (not(xxx1['weight'] == xxx2['weight']))and(not(xxx2['weight'] == 0))and(not(xxx1['weight'] == 0)):
+                ans['different'] += 1
+    return ans
+
+
+def f_count(diction, first, second_key):
+    key15 = return_key(first, second_key)
+    if key15 in diction:
+        return diction[key15]['count']
+    else:
+        return 0
+
+
+def add_to_diction_test(dic_put, key):
+    if key not in dic_put:
+        dic_put[key] = {"count": 1, "score": 0.5}
+    else:
+        dic_put[key]["count"] += 1
+
+
+G = nx.read_edgelist("graph.csv", delimiter=",", data=[("weight", int)], nodetype=int)
+tmp_dir = "trains"
+listdir = os.listdir(tmp_dir)
+pos = {}
+neg = {}
+for tmp_file in listdir:
+    print(tmp_file)
+    parse_train_file(tmp_dir + "/" + tmp_file, pos, neg)
+
+testdata = json.load(open('test.csv'))
+for item in testdata:
+    testpos = {}
+    testneg = {}
+    for x in range(0, len(item['inputs'])):
+        fisrt = item['inputs'][x]
+        therd = item['outputs'][x]
+        for y in range((x+1), len(item['inputs'])):
+            second = item['inputs'][y]
+            four = item['outputs'][y]
+            tmpkey = return_key(fisrt, second)
+            tmpkey1 = return_key(therd, four)
+            add_to_diction_test(testpos, tmpkey)
+            add_to_diction_test(testpos, tmpkey1)
+        for yy in range(0, len(item['inputs'])):
+            five = item['outputs'][yy]
+            tmpkey2 = return_key(fisrt, five)
+            add_to_diction_test(testneg, tmpkey2)
+        for ww in testpos:
+            keys = ww.split("-")
+            ff = int(keys[0])
+            ss = int(keys[1])
+            xxx = G.get_edge_data(ff, ss, default={'weight': 0})
+            if xxx['weight'] == 1:
+                testpos[ww]['score'] = 0.99
+            elif xxx['weight'] == -1:
+                testpos[ww]['score'] = 0.01
+            else:
+                aa = neighbors(G, ff, ss)
+                if aa['same'] > aa['different']:
+                    testpos[ww]['score'] = 0.9
+                elif aa['same'] < aa['different']:
+                    testpos[ww]['score'] = 0.1
+                else:
+                    oo = f_count(pos, ff, ss)
+                    tt = f_count(neg, ff, ss)
+                    if oo > tt:
+                        testpos[ww]['score'] = 0.8
+                    elif tt > oo:
+                        testpos[ww]['score'] = 0.2
+        for ww in testneg:
+            keys = ww.split("-")
+            ff = int(keys[0])
+            ss = int(keys[1])
+            xxx = G.get_edge_data(ff, ss, default={'weight': 0})
+            if xxx['weight'] == -1:
+                testneg[ww]['score'] = 0.99
+            elif xxx['weight'] == 1:
+                testneg[ww]['score'] = 0.01
+            else:
+                aa = neighbors(G, ff, ss)
+                if aa['same'] > aa['different']:
+                    testneg[ww]['score'] = 0.1
+                elif aa['same'] < aa['different']:
+                    testneg[ww]['score'] = 0.9
+                else:
+                    oo = f_count(pos, ff, ss)
+                    tt = f_count(neg, ff, ss)
+                    if oo > tt:
+                        testneg[ww]['score'] = 0.2
+                    elif tt > oo:
+                        testneg[ww]['score'] = 0.8
+    print avv(testpos, testneg)
+    print(testpos)
+    print(testneg)
